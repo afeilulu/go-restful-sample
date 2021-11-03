@@ -1,0 +1,28 @@
+
+FROM golang:alpine as build
+WORKDIR /app
+ADD . /app
+
+RUN echo -e http://mirrors.aliyun.com/alpine/v3.10/main/ > /etc/apk/repositories \
+    && apk update \
+    && apk add --no-cache tzdata gcc g++ libffi-dev musl-dev openssl-dev make linux-headers libc-dev libc6-compat binutils
+
+RUN export GOPROXY=https://goproxy.cn,direct \
+    && go mod tidy \
+    && go install github.com/swaggo/swag/cmd/swag@latest \
+    && export GOARCH=amd64 \
+    && export GOOS=linux \
+    && export CGO_ENABLED=0 \
+    && swag init --parseDependency --parseInternal \
+    && go build -a -installsuffix cgo -o main .
+
+
+FROM scratch as final
+COPY --from=build /app/main .
+COPY .env .
+COPY .env.development.local .
+# copy timezone file from build image
+COPY --from=build /usr/share/zoneinfo /usr/share/zoneinfo
+ENV TZ=Asia/Shanghai
+
+CMD ["/main"]
